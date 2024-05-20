@@ -1,0 +1,220 @@
+type element. (*element in finite field or group*)
+free Sec:channel [private].		(*secure channel*)
+free Pub:channel.			(*public channel*)
+
+
+(*-------Names & Variables-------*)
+(*elements of cyclic group*)
+const P:element.
+
+(*1 . KGCA and KGCB master public key*)
+free PpubA:element.
+free BSNA:bitstring.
+free PpubB:element.
+free BSNB:bitstring.
+
+
+(*2 . KGCA and KGCB master secret key*)
+free sA:element [private].
+free sB:element [private].
+
+(*3. vehicles' private key and certificate*)
+(*VehicleA*)
+free rA:element [private].
+free xA:element [private].
+free alphaA:element [private].
+free fA:element [private].
+free betaA:element [private].
+free QA:element [private].
+free cA:element [private].
+free lA:element [private].
+free tA:element [private].
+
+(*VehicleB*)
+free rB:element [private].
+free xB:element [private].
+free alphaB:element [private].
+free fB:element [private].
+free betaB:element [private].
+free QB:element [private].
+free cB:element [private].
+free lB:element [private].
+free tB:element [private].
+
+
+
+(*4. vehicles' public parameters*)
+(*VehicleA*)
+free XA:element.
+free RA:element.
+free PIDA:bitstring.
+
+(*VehicleB*)
+free XB:element.
+free RB:element.
+free PIDB:bitstring.
+
+
+
+(*5. session key*)
+free KA:bitstring [private].
+free KB:bitstring [private].
+
+
+
+
+
+(*-------Constructors, Destructors & Equations------*)
+fun Xor(bitstring,element):bitstring.
+fun Enc(element,bitstring,element,element,element,element,element,element):bitstring.
+fun Dec(element,bitstring):bitstring,element,element,element,element,element,element.
+fun H1(element,bitstring):element.
+fun H2(bitstring,element):element.
+fun H3(bitstring,element,element):element.
+fun H4(bitstring,element):element.
+fun H5(element,element,bitstring):element.
+fun H6(element,element,element):element.
+
+fun pairing(element,element):element.  (*Pairing operation:e(g,g)*)
+fun Mult(element,element):element.  (*Multiplication in group: G×G*)
+fun Add(element,element):element.	 (*Addition*)
+fun Powzn(element,element):element. 	(*g^s:Powzn(g,s)*)
+fun ni(element):element.
+
+equation forall xA:element ,XA:element ,m:bitstring; Dec(xA,Enc(XA,m))=m.
+equation forall xB:element ,XB:element ,m:bitstring; Dec(xB,Enc(XB,m))=m.
+equation forall P:element, a:element; Powzn(Powzn(P,a),-a)=P.
+
+(*Event*)
+event beginVehicleA(bitstring).
+event endVehicleA(bitstring).
+event beginVehicleB(bitstring).
+event endVehicleB(bitstring).
+
+(*Queries*)
+query attacker(KA).
+query attacker(KB).
+query IDA:bitstring; inj-event (beginVehicleA(IDA)) ==> inj-event(endVehicleB(IDA)).
+query IDB:bitstring; inj-event (endVehicleB(IDB)) ==> inj-event(beginVehicleA(IDB)).
+
+(*Processes*)
+
+
+
+
+(*KGC Processes*)
+(*VehicleA*)
+let VehicleAReg=
+	in(Sec,(PIDA:bitstring));
+	let XA=Powzn(P,xA) in
+	out(Sec,(xA,XA));
+	0.
+	
+let VehicleAJoin=
+	in(Sec,(PIDA:bitstring,fA:element));
+	new betaA:element;
+	let UA = Powzn(P,betaA) in
+	let QA = Add(RA,UA) in
+	let cA = H3(PIDA,QA,fA) in
+	let lA = Add(betaA,Mult(sA,cA)) in
+	out(Sec,(lA,QA));
+	0.
+	
+(*VehicleB*)
+let VehicleBReg=
+	in(Sec,(PIDB:bitstring));
+	let XB=Powzn(P,xB) in
+	out(Sec,(xB,XB));
+	0.
+	
+let VehicleBJoin=
+	in(Sec,(PIDB:bitstring,fB:element));
+	new betaB:element;
+	let UB = Powzn(P,betaB) in
+	let QB = Add(RB,UB) in
+	let cB = H3(PIDB,QB,fB) in
+	let lB = Add(betaB,Mult(sB,cB)) in
+	out(Sec,(lB,QB));
+	0.
+
+let KGC=VehicleAReg | VehicleAJoin | VehicleBReg | VehicleBJoin.
+
+(*VehicleA Processes*)
+let VehicleA=
+	(*Registration*)
+	new rA:element;
+	let RA = Powzn(P,rA) in
+	let PIDA = Xor(IDA,Powzn(RA,H1(Powzn(PpubA,rA),BSNA))) in
+	out(Sec,(PIDA));
+	
+	in(Sec,(xA:element,XA:element));
+	(*Join*)
+	new alphaA:element;
+	let fA = H2(PIDA,fA) in
+	out(Sec,(PIDA,fA));
+	
+	in(Sec,(lA:element,QA:element));
+	let tA = Add(rA,lA) in
+	
+	
+	
+(*Login & Authentication*)
+	event beginVehicleA(IDA);
+	let N=H4(BSNA,PpubA) in
+	new n:element;
+	new y:element;
+	let E=Powzn(P,Mult(n,tA)) in
+	let Z=Powzn(QA,n) in
+	let V=Powzn(P,Mult(n,cA)) in 
+	let YA=Powzn(P,y) in
+	let Y'=Powzn(XB,y) in
+	let sigema=Add(y,Mult(n,Mult(tA,H5(YA,Y',PIDA)))) in
+	let CT=Enc(XB,PIDA,N,Y',E,Z,V,sigema) in
+	out(Pub,(CT));
+
+	in(Pub,(W:element,TB:bitstring,PIDB:bitstring));
+	let KA=H6(YA,W,Powzn(W,y)) in
+
+	event endVehicleA(IDA)
+	else 0.
+	
+	
+(*VehicleB Processes*)
+let VehicleB=
+	(*Registration*)
+	new rB:element;
+	let RB = Powzn(P,rB) in
+	let PIDB = Xor(IDB,Powzn(RB,H1(Powzn(PpubB,rB),BSNB))) in
+	out(Sec,(PIDB));
+	
+	in(Sec,(xB:element,XB:element));
+	(*Join*)
+	new alphaB:element;
+	let fB = H2(PIDB,fB) in
+	out(Sec,(PIDB,fB));
+	
+	in(Sec,(lB:element,QB:element));
+	let tB = Add(rB,lB) in
+	
+	
+	
+	
+	(*Login & Authentication*)
+	event beginVehicleB(IDB);
+	in(Pub,(CT:bitstring));
+	let PIDA,N',Y',E',Z',V',sigema' = Dec(xB,CT) in
+	if(N' = H4(BSNA,PpubA)) then
+	if(pairing(E',P) = Mult(pairing(Z',P),pairing(V',PpubA))) then
+	let YB=Powzn(Y',-xB) in
+	if(Powzn(P,sigema') = Add(YB,Powzn(E',H5(YB,Y',PIDA)))) then
+	new w:element;
+	let W=Powzn(P,w) in
+	let KB=H6(YB,W,Powzn(YB,w)) in
+	out(Pub,(W,TB,PIDB));
+	
+	event endVehicleB(IDB)
+	else 0.
+	
+	(*Processes Replication*)
+	process 
+    (!VehicleA | !VehicleB | !KGC)
