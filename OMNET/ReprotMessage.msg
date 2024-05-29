@@ -21,6 +21,7 @@ cplusplus {{
 
 namespace veins;
 
+class carMessage;
 class BaseFrame1609_4;
 class noncobject Coord;
 class LAddress::L2Type extends void;
